@@ -1,19 +1,56 @@
 import streamlit as st
-from streamlit_navigation_bar import st_navbar
+from streamlit_option_menu import option_menu
 import pandas as pd
 import mysql.connector
 from mysql.connector import Error
 import easyocr
 import os
-import torch
 import re
 import numpy as np
 from PIL import Image
 import cv2
 import matplotlib.pyplot as plt
+import time
 
 # Setting the page configuration
 st.set_page_config(page_title="Business Card Data Extractor", layout="wide")
+
+# Custom CSS to add a background image to the sidebar and style the app
+sidebar_styles = """
+    <style>
+        /* Sidebar background image */
+        [data-testid="stSidebar"] {
+            background-image: url("https://images.unsplash.com/photo-1506748686214-e9df14d4d9d0");
+            background-size: cover;
+            background-position: center;
+            color: white;  /* Change text color to white for better contrast */
+        }
+        /* Main content area background color */
+        .main {
+            background-color: #d6d8db;
+        }
+        /* Sidebar styles for menu and text */
+        .css-1v0mbdj {
+            color: white;
+        }
+        /* Centering the logo image */
+        .center-image {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .center-image img{
+            border-radius: 100%;
+        }
+        /* Font styles for the entire app */
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+        html, body, [class*="css"]  {
+            font-family: 'Roboto', sans-serif;
+        }
+    </style>
+"""
+st.markdown(sidebar_styles, unsafe_allow_html=True)
 
 # database connection
 mydb = mysql.connector.connect(
@@ -24,29 +61,37 @@ mydb = mysql.connector.connect(
     )
 mycursor = mydb.cursor()
 
-# Styles for navigation bar
-styles = {
-    "nav": {
-        "background-color": "blue",
-        "justify-content": "left",
-    },
-    "img": {
-        "padding-right": "14px",
-    },
-    "span": {
-        "color": "white",
-        "padding": "14px",
-    },
-    "active": {
-        "background-color": "white",
-        "color": "var(--text-color)",
-        "font-weight": "normal",
-        "padding": "14px",
-    }
-}
+absolute_path = os.path.abspath("./images/logo.JPG")
 
-# Navigation bar
-page = st_navbar(["Home", "Upload & Extract", "Edit/Update & View", "Delet & View"], styles=styles)
+# Sidebar menu using streamlit-option-menu
+with st.sidebar:
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:  # This column will center the image
+        st.image(absolute_path, width=70)
+    # st.markdown(f'<div class="center-image"><img src="{image_logo}" width="120"></div>', unsafe_allow_html=True) #  Logo image
+    st.title("BizCardX")
+    page = option_menu(
+        menu_title="",  # No title for the menu, using image and title instead
+        options=["Home", "Upload & Extract", "Edit/Update & View", "Delet & View"],
+        icons=["house", "cloud-upload", "pencil", "trash"],
+        menu_icon="cast",
+        default_index=0,
+        styles={
+            "container": {"padding": "0"},
+            "icon": {"color": "white", "font-size": "20px"},
+            "nav-link": {
+                "font-size": "16px",
+                "text-align": "left",
+                "margin-bottom": "10px",
+                "color": "white",
+                "--hover-color": "#0d6efd",
+                "background-color": "rgba(0, 0, 0, 0.6)",
+                "border-radius": "5px",
+                "transition": "all 0.3s ease"
+            },
+            "nav-link-selected": {"background-color": "#0d6efd"},
+        },
+    )
 
 # Directory to store uploaded files
 temp_dir = "uploaded_files"
@@ -68,6 +113,7 @@ def img_to_binary(file):
     # Convert image data to binary format
     with open(file, 'rb') as file:
         binaryData = file.read()
+        st.write(f"Storing image of size: {len(binaryData)} bytes")
     return binaryData
 
 
@@ -218,7 +264,7 @@ elif page == "Upload & Extract":
                                                                                 city VARCHAR(255),
                                                                                 pincode VARCHAR(20),
                                                                                 state VARCHAR(255),
-                                                                                image BLOB
+                                                                                image LONGBLOB
                                                                             )'''
                 mycursor.execute(create_query)
                 mydb.commit()
@@ -307,28 +353,62 @@ elif page == "Edit/Update & View":
             updated_data = mycursor.fetchall()
             df_updated_data = pd.DataFrame(updated_data, 
                 columns=["card_holder_name","designation","email","company","phone_number","website","area", "city","pincode","state"])
-            def color_data(val):
-                color = 'background-color: lightblue;'  # Change to the color you prefer
-                return [color] * len(val)
-            # Use style.apply to apply the color function to the DataFrame
-            styled_df = df_updated_data.style.apply(color_data, axis=1)
+            
+            styled_df = df_updated_data
             st.write(styled_df)
 elif page == "Delet & View":
     tab1,tab2=st.tabs(["DELETE CARD","VIEW REMAINING DATA AFTER DELETE"])
     with tab1:
+        def refresh_card_names():
+            # Function to fetch the list of card holder names from the database.
+            card_names = Get_card_names()
+            return card_names
+        def get_card_image(card_holder_name):
+            get_img_query = "SELECT image FROM card_information WHERE card_holder_name = %s"
+            mycursor.execute(get_img_query,(card_holder_name,))
+            result = mycursor.fetchone()
+            if result:
+                image_data = result[0]
+                # st.write(f"Retrieved image of size: {len(image_data)} bytes")
+                return image_data
+            else:
+                return None
         card_names = Get_card_names()
         st.markdown("### Select the Card Holder Name to Delete")
         selected_name = st.selectbox('Select Channel Name', options=card_names, index=None, placeholder="Select Name...")
         if selected_name is not None:
             st.write(f"### You have selected :green[**{selected_name}'s**] card to delete")
+            image_dataa = get_card_image(selected_name)
+            if image_dataa is not None:
+                # st.write(f"Image data size: {len(image_dataa)} bytes")
+                nparr = np.frombuffer(image_dataa, np.uint8)
+                # st.write(f"Array shape from buffer: {nparr.shape}")
+                try:
+                    # nparr = np.frombuffer(image_data, np.uint8)
+                    image_return = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    # image_return = Image.open(io.BytesIO(image_data))
+                    if image_return is None:
+                        st.error("Failed to decode the image. The file may be corrupted.")
+                    else:
+                        st.image(image_return, width=300, channels='BGR' , caption=f"{selected_name}'s Business Card")
+                except Exception as e:
+                    st.error(f"An error occurred while processing the image: {e}")
+            else:
+                st.write("No image found for the selected card holder.")
             st.write("#### Are You Sure")
-
             if st.button("Yes,sure"):
                 try:
                     card_delete_query = "DELETE FROM card_information WHERE card_holder_name = %s"
                     mycursor.execute(card_delete_query, (selected_name,))
                     mydb.commit()
                     st.success("Business card infos deleted from the database.")
+                    # Delay for 2 seconds before refreshing
+                    time.sleep(5)
+
+                    # Refresh the list of card names after deletion
+                    card_names = refresh_card_names()
+                    # Re-render the selectbox with updated options
+                    st.experimental_rerun()
                 except Exception as e:
                     # Catch specific exceptions to provide better error handling and debugging
                     st.warning(f"An error occurred: {e}")
