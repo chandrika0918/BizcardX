@@ -57,6 +57,10 @@ BizCardX is a Streamlit application that extracts information from business card
 
 ![image](https://github.com/user-attachments/assets/e7e70f1b-66fb-4296-a6db-6937e516a005)
 
+## Demo Video
+### Click Here to view demo video
+https://www.linkedin.com/posts/vijayachandrika-r-bb554023a_datascience-imageprocessing-easyocr-activity-7234845720346775552-vaqH?utm_source=share&utm_medium=member_desktop
+
 ## Contact
 For any questions or support, please contact `iam.chandrika92@gmail.com `
 
